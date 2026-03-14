@@ -13,7 +13,7 @@ class PageIterator:
 
     Usage::
 
-        for deal in PageIterator(client, "/v1/deals", data_key="deals"):
+        for deal in PageIterator(client, "/v1/deals"):
             print(deal["business_name"])
     """
 
@@ -46,8 +46,8 @@ class PageIterator:
             yield from items
 
             # Determine total pages from pagination metadata
-            pagination = response.get("pagination") or response.get("meta") or {}
-            total_pages = pagination.get("total_pages", 1)
+            meta = response.get("meta") or {}
+            total_pages = meta.get("total_pages", 1)
 
             if self._page >= total_pages or not items:
                 break
@@ -59,7 +59,7 @@ class AsyncPageIterator:
 
     Usage::
 
-        async for deal in AsyncPageIterator(client, "/v1/deals", data_key="deals"):
+        async for deal in AsyncPageIterator(client, "/v1/deals"):
             print(deal["business_name"])
     """
 
@@ -99,8 +99,8 @@ class AsyncPageIterator:
             )
 
             items = response.get(self._data_key, [])
-            pagination = response.get("pagination") or response.get("meta") or {}
-            total_pages = pagination.get("total_pages", 1)
+            meta = response.get("meta") or {}
+            total_pages = meta.get("total_pages", 1)
 
             if not items:
                 raise StopAsyncIteration

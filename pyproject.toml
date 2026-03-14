@@ -1,19 +1,54 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "banklyze"
-version = "0.1.0"
-description = "Python SDK for the Banklyze API — MCA underwriting platform"
+version = "1.0.0"
+description = "Official Python SDK for the Banklyze API — AI-powered MCA underwriting"
 readme = "README.md"
-requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["httpx>=0.25"]
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.25,<1.0",
+    "pydantic>=2.0,<3.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-httpx>=0.30",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
 
 [project.urls]
 Homepage = "https://banklyze.com"
-Documentation = "https://docs.banklyze.com"
+Documentation = "https://docs.banklyze.com/sdk/python"
+Repository = "https://github.com/thornebridge/banklyze"
+Changelog = "https://docs.banklyze.com/sdk/python/changelog"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.hatch.build.targets.wheel]
+packages = ["banklyze"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

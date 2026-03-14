@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from banklyze._base_resource import AsyncAPIResource, SyncAPIResource
+from banklyze.types.transaction import (
+    TransactionCorrectionListResponse,
+    TransactionDetail,
+    TransactionListResponse,
+)
+
 if TYPE_CHECKING:
-    from banklyze.client import BanklyzeClient
-    from banklyze.pagination import PageIterator
+    from banklyze.pagination import AsyncPageIterator, PageIterator
 
 
-class TransactionsResource:
-    def __init__(self, client: BanklyzeClient):
-        self._client = client
-
+class TransactionsResource(SyncAPIResource):
     def list_all_for_document(self, document_id: int, **filters: Any) -> PageIterator:
         """Iterate over all transactions for a document, auto-fetching pages.
 
@@ -26,7 +29,6 @@ class TransactionsResource:
         return PageIterator(
             self._client,
             f"/v1/documents/{document_id}/transactions",
-            data_key="transactions",
             params=filters,
         )
 
@@ -43,7 +45,6 @@ class TransactionsResource:
         return PageIterator(
             self._client,
             f"/v1/deals/{deal_id}/transactions",
-            data_key="transactions",
             params=filters,
         )
 
@@ -53,12 +54,24 @@ class TransactionsResource:
         *,
         page: int = 1,
         per_page: int = 50,
-    ) -> dict[str, Any]:
-        return self._client._request(
+        type: str | None = None,
+        flagged: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> TransactionListResponse:
+        data = self._request(
             "GET",
             f"/v1/documents/{document_id}/transactions",
-            params={"page": page, "per_page": per_page},
+            params={
+                "page": page,
+                "per_page": per_page,
+                "type": type,
+                "flagged": flagged,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
         )
+        return TransactionListResponse.model_validate(data)
 
     def list_for_deal(
         self,
@@ -66,9 +79,131 @@ class TransactionsResource:
         *,
         page: int = 1,
         per_page: int = 50,
-    ) -> dict[str, Any]:
-        return self._client._request(
+        type: str | None = None,
+        flagged: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> TransactionListResponse:
+        data = self._request(
             "GET",
             f"/v1/deals/{deal_id}/transactions",
-            params={"page": page, "per_page": per_page},
+            params={
+                "page": page,
+                "per_page": per_page,
+                "type": type,
+                "flagged": flagged,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
+        return TransactionListResponse.model_validate(data)
+
+    def correct(
+        self,
+        document_id: int,
+        transaction_id: int,
+        **fields: Any,
+    ) -> TransactionDetail:
+        """Correct a transaction's categorization or amount."""
+        data = self._request(
+            "PATCH",
+            f"/v1/documents/{document_id}/transactions/{transaction_id}",
+            json=fields,
+        )
+        return TransactionDetail.model_validate(data)
+
+    def corrections(self, transaction_id: int) -> TransactionCorrectionListResponse:
+        """List correction history for a transaction."""
+        data = self._request("GET", f"/v1/transactions/{transaction_id}/corrections")
+        return TransactionCorrectionListResponse.model_validate(data)
+
+
+class AsyncTransactionsResource(AsyncAPIResource):
+    async def list_for_document(
+        self,
+        document_id: int,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        type: str | None = None,
+        flagged: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> TransactionListResponse:
+        data = await self._request(
+            "GET",
+            f"/v1/documents/{document_id}/transactions",
+            params={
+                "page": page,
+                "per_page": per_page,
+                "type": type,
+                "flagged": flagged,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
+        return TransactionListResponse.model_validate(data)
+
+    async def list_for_deal(
+        self,
+        deal_id: int,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        type: str | None = None,
+        flagged: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> TransactionListResponse:
+        data = await self._request(
+            "GET",
+            f"/v1/deals/{deal_id}/transactions",
+            params={
+                "page": page,
+                "per_page": per_page,
+                "type": type,
+                "flagged": flagged,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
+        return TransactionListResponse.model_validate(data)
+
+    async def correct(
+        self,
+        document_id: int,
+        transaction_id: int,
+        **fields: Any,
+    ) -> TransactionDetail:
+        """Correct a transaction's categorization or amount."""
+        data = await self._request(
+            "PATCH",
+            f"/v1/documents/{document_id}/transactions/{transaction_id}",
+            json=fields,
+        )
+        return TransactionDetail.model_validate(data)
+
+    async def corrections(self, transaction_id: int) -> TransactionCorrectionListResponse:
+        """List correction history for a transaction."""
+        data = await self._request("GET", f"/v1/transactions/{transaction_id}/corrections")
+        return TransactionCorrectionListResponse.model_validate(data)
+
+    def list_all_for_document(self, document_id: int, **filters: Any) -> AsyncPageIterator:
+        """Iterate over all transactions for a document, auto-fetching pages."""
+        from banklyze.pagination import AsyncPageIterator
+
+        return AsyncPageIterator(
+            self._client,
+            f"/v1/documents/{document_id}/transactions",
+            params=filters,
+        )
+
+    def list_all_for_deal(self, deal_id: int, **filters: Any) -> AsyncPageIterator:
+        """Iterate over all transactions for a deal, auto-fetching pages."""
+        from banklyze.pagination import AsyncPageIterator
+
+        return AsyncPageIterator(
+            self._client,
+            f"/v1/deals/{deal_id}/transactions",
+            params=filters,
         )

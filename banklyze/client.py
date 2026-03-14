@@ -1,14 +1,14 @@
-"""BanklyzeClient — Stripe-style API client."""
+"""BanklyzeClient — Stripe-style synchronous API client."""
 
 from __future__ import annotations
 
-import random
 import time
 import uuid
 from typing import Any
 
 import httpx
 
+from banklyze._base import ClientConfig
 from banklyze.exceptions import (
     AuthenticationError,
     BanklyzeError,
@@ -16,13 +16,31 @@ from banklyze.exceptions import (
     RateLimitError,
     ValidationError,
 )
+from banklyze.resources.admin import AdminResource
+from banklyze.resources.collaboration import (
+    AssignmentsResource,
+    CommentsResource,
+    DocRequestsResource,
+    TimelineResource,
+    UserSearchResource,
+)
+from banklyze.resources.crm import CrmResource
 from banklyze.resources.deals import DealsResource
 from banklyze.resources.documents import DocumentsResource
 from banklyze.resources.events import EventsResource
 from banklyze.resources.exports import ExportsResource
 from banklyze.resources.ingest import IngestResource
+from banklyze.resources.integrations import IntegrationsResource
+from banklyze.resources.keys import KeysResource
+from banklyze.resources.notifications import NotificationsResource
+from banklyze.resources.oauth import OAuthResource
+from banklyze.resources.onboarding import OnboardingResource
+from banklyze.resources.push import PushResource
 from banklyze.resources.rulesets import RulesetsResource
+from banklyze.resources.share import SharesResource
+from banklyze.resources.team import TeamResource
 from banklyze.resources.transactions import TransactionsResource
+from banklyze.resources.usage import UsageResource
 from banklyze.resources.webhooks import WebhooksResource
 
 
@@ -56,30 +74,51 @@ class BanklyzeClient:
         retry_max_backoff: float = 30.0,
         logger: Any | None = None,
     ):
-        headers: dict[str, str] = {}
-        if api_key:
-            headers["X-API-Key"] = api_key
-
-        self._default_timeout = timeout
+        self._config = ClientConfig(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
+            retry_max_backoff=retry_max_backoff,
+        )
         self._http = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            headers=headers,
+            base_url=self._config.base_url,
+            headers=self._config._build_headers(),
             timeout=timeout,
         )
-        self.last_request_id: str | None = None
-        self._max_retries = max_retries
-        self._retry_backoff = retry_backoff
-        self._retry_max_backoff = retry_max_backoff
         self._logger = logger
 
+        self.admin = AdminResource(self)
+        self.crm = CrmResource(self)
         self.deals = DealsResource(self)
         self.documents = DocumentsResource(self)
         self.events = EventsResource(self)
         self.transactions = TransactionsResource(self)
         self.exports = ExportsResource(self)
         self.ingest = IngestResource(self)
+        self.integrations = IntegrationsResource(self)
+        self.keys = KeysResource(self)
+        self.notifications = NotificationsResource(self)
+        self.oauth = OAuthResource(self)
+        self.onboarding = OnboardingResource(self)
+        self.push = PushResource(self)
         self.rulesets = RulesetsResource(self)
+        self.shares = SharesResource(self)
+        self.team = TeamResource(self)
+        self.usage = UsageResource(self)
         self.webhooks = WebhooksResource(self)
+
+        # Sub-resources on deals
+        self.deals.comments = CommentsResource(self)
+        self.deals.assignments = AssignmentsResource(self)
+        self.deals.doc_requests = DocRequestsResource(self)
+        self.deals.timeline = TimelineResource(self)
+        self.deals.users = UserSearchResource(self)
+
+    @property
+    def last_request_id(self) -> str | None:
+        return self._config.last_request_id
 
     def __enter__(self):
         return self
@@ -98,6 +137,7 @@ class BanklyzeClient:
         path: str,
         *,
         json: dict | None = None,
+        data: dict | None = None,
         params: dict | None = None,
         files: Any = None,
         headers: dict[str, str] | None = None,
@@ -118,21 +158,22 @@ class BanklyzeClient:
         last_exc: Exception | None = None
         resp: httpx.Response | None = None
 
-        for attempt in range(1 + self._max_retries):
+        for attempt in range(1 + self._config.max_retries):
             req_start = time.monotonic()
             try:
                 resp = self._http.request(
                     method,
                     path,
                     json=json,
+                    data=data,
                     params={k: v for k, v in (params or {}).items() if v is not None},
                     files=files,
                     headers=req_headers,
-                    timeout=timeout or self._default_timeout,
+                    timeout=timeout or self._config.timeout,
                 )
 
                 # Capture the server-echoed request ID for debugging correlation
-                self.last_request_id = resp.headers.get(
+                self._config.last_request_id = resp.headers.get(
                     "X-Request-ID", req_headers["X-Request-ID"]
                 )
 
@@ -141,7 +182,7 @@ class BanklyzeClient:
                     self._logger.debug(
                         "%s %s -> %d (%.0fms) [%s]",
                         method, path, resp.status_code, duration_ms,
-                        self.last_request_id,
+                        self._config.last_request_id,
                     )
 
                 if resp.status_code < 400:
@@ -152,7 +193,7 @@ class BanklyzeClient:
                     return resp.json()
 
                 # Determine if this error is retryable
-                if not self._should_retry(method, resp.status_code, attempt):
+                if not self._config._should_retry(method, resp.status_code, attempt):
                     self._raise_for_status(resp)
 
                 # For 429, honor Retry-After header
@@ -162,17 +203,17 @@ class BanklyzeClient:
                         try:
                             delay = float(retry_after)
                         except ValueError:
-                            delay = self._backoff_delay(attempt)
+                            delay = self._config._backoff_delay(attempt)
                     else:
-                        delay = self._backoff_delay(attempt)
+                        delay = self._config._backoff_delay(attempt)
                 else:
-                    delay = self._backoff_delay(attempt)
+                    delay = self._config._backoff_delay(attempt)
 
                 time.sleep(delay)
                 last_exc = BanklyzeError(
                     f"HTTP {resp.status_code}",
                     status_code=resp.status_code,
-                    request_id=self.last_request_id,
+                    request_id=self._config.last_request_id,
                 )
 
             except (
@@ -182,14 +223,14 @@ class BanklyzeClient:
                 httpx.PoolTimeout,
             ) as e:
                 # Connection-level errors are always retryable (never reached server)
-                self.last_request_id = req_headers.get("X-Request-ID")
+                self._config.last_request_id = req_headers.get("X-Request-ID")
                 last_exc = e
-                if attempt >= self._max_retries:
+                if attempt >= self._config.max_retries:
                     raise BanklyzeError(
                         f"Connection error after {attempt + 1} attempts: {e}",
-                        request_id=self.last_request_id,
+                        request_id=self._config.last_request_id,
                     ) from e
-                time.sleep(self._backoff_delay(attempt))
+                time.sleep(self._config._backoff_delay(attempt))
 
         # Exhausted retries — raise the last error
         if resp is not None:
@@ -199,30 +240,6 @@ class BanklyzeClient:
         if last_exc is not None:
             raise last_exc  # type: ignore[misc]
 
-    def _should_retry(self, method: str, status_code: int, attempt: int) -> bool:
-        """Determine if a failed request should be retried."""
-        if attempt >= self._max_retries:
-            return False
-        # For mutating methods, never retry on HTTP status codes — only
-        # connection-level errors (handled in the except block) are retried.
-        if method.upper() in ("POST", "PATCH", "PUT"):
-            return False
-        # Never retry deterministic client errors
-        if status_code in (401, 403, 404, 409, 422):
-            return False
-        # Retry 429 (rate limit) and 5xx (server errors) for idempotent methods
-        if status_code == 429 or status_code >= 500:
-            return True
-        return False
-
-    def _backoff_delay(self, attempt: int) -> float:
-        """Calculate exponential backoff delay with jitter."""
-        delay = self._retry_backoff * (2 ** attempt)
-        delay = min(delay, self._retry_max_backoff)
-        # Add jitter: +/-25%
-        jitter = delay * 0.25 * (2 * random.random() - 1)
-        return max(0, delay + jitter)
-
     def _raise_for_status(self, resp: httpx.Response) -> None:
         try:
             body = resp.json()
@@ -230,7 +247,7 @@ class BanklyzeClient:
             body = {}
 
         message = body.get("error") or body.get("detail") or resp.text
-        request_id = self.last_request_id
+        request_id = self._config.last_request_id
 
         if resp.status_code == 401:
             raise AuthenticationError(message, status_code=401, body=body, request_id=request_id)

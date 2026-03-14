@@ -1,18 +1,53 @@
-"""Documents resource — upload, bulk upload, list, detail, status, reprocess, cancel."""
+"""Documents resource — upload, bulk upload, list, detail, status, reprocess, cancel.
+
+Contains both sync (``DocumentsResource``) and async (``AsyncDocumentsResource``)
+implementations.  All methods return typed Pydantic models from
+``banklyze.types.document``.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from banklyze._base_resource import AsyncAPIResource, SyncAPIResource
+from banklyze.types.document import (
+    BatchDocumentStatusResponse,
+    BulkUploadResponse,
+    DocumentDetail,
+    DocumentListResponse,
+    DocumentStatusResponse,
+    DocumentUploadResponse,
+)
+
 if TYPE_CHECKING:
-    from banklyze.client import BanklyzeClient
-    from banklyze.pagination import PageIterator
+    from banklyze.pagination import AsyncPageIterator, PageIterator
 
 
-class DocumentsResource:
-    def __init__(self, client: BanklyzeClient):
-        self._client = client
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+
+def _idempotency_headers(key: str | None) -> dict[str, str] | None:
+    if key:
+        return {"Idempotency-Key": key}
+    return None
+
+
+def _upload_params(document_type: str | None) -> dict[str, str] | None:
+    if document_type:
+        return {"document_type": document_type}
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Sync resource
+# ---------------------------------------------------------------------------
+
+
+class DocumentsResource(SyncAPIResource):
+    """Synchronous documents resource."""
 
     def upload(
         self,
@@ -21,23 +56,18 @@ class DocumentsResource:
         *,
         document_type: str | None = None,
         idempotency_key: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> DocumentUploadResponse:
         p = Path(file_path)
-        headers = {}
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        params = {}
-        if document_type:
-            params["document_type"] = document_type
         with open(p, "rb") as f:
-            return self._client._request(
+            raw = self._request(
                 "POST",
                 f"/v1/deals/{deal_id}/documents",
                 files={"file": (p.name, f, "application/pdf")},
-                params=params or None,
-                headers=headers or None,
+                params=_upload_params(document_type),
+                headers=_idempotency_headers(idempotency_key),
                 timeout=self._client.TIMEOUT_UPLOAD,
             )
+        return DocumentUploadResponse.model_validate(raw)
 
     def upload_bulk(
         self,
@@ -46,39 +76,41 @@ class DocumentsResource:
         *,
         document_type: str | None = None,
         idempotency_key: str | None = None,
-    ) -> dict[str, Any]:
-        headers = {}
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        params = {}
-        if document_type:
-            params["document_type"] = document_type
+    ) -> BulkUploadResponse:
         files = []
         handles = []
         try:
             for fp in file_paths:
                 p = Path(fp)
-                f = open(p, "rb")
+                f = open(p, "rb")  # noqa: SIM115
                 handles.append(f)
                 files.append(("files", (p.name, f, "application/pdf")))
-            return self._client._request(
+            raw = self._request(
                 "POST",
                 f"/v1/deals/{deal_id}/documents/bulk",
                 files=files,
-                params=params or None,
-                headers=headers or None,
+                params=_upload_params(document_type),
+                headers=_idempotency_headers(idempotency_key),
                 timeout=self._client.TIMEOUT_UPLOAD,
             )
         finally:
             for f in handles:
                 f.close()
+        return BulkUploadResponse.model_validate(raw)
 
-    def list(self, deal_id: int, *, page: int = 1, per_page: int = 25) -> dict[str, Any]:
-        return self._client._request(
+    def list(
+        self,
+        deal_id: int,
+        *,
+        page: int = 1,
+        per_page: int = 25,
+    ) -> DocumentListResponse:
+        raw = self._request(
             "GET",
             f"/v1/deals/{deal_id}/documents",
             params={"page": page, "per_page": per_page},
         )
+        return DocumentListResponse.model_validate(raw)
 
     def list_all(self, deal_id: int, **filters: Any) -> PageIterator:
         """Iterate over all documents for a deal, auto-fetching pages.
@@ -93,35 +125,42 @@ class DocumentsResource:
         return PageIterator(
             self._client,
             f"/v1/deals/{deal_id}/documents",
-            data_key="documents",
             params=filters,
         )
 
-    def get(self, document_id: int) -> dict[str, Any]:
-        return self._client._request("GET", f"/v1/documents/{document_id}")
+    def get(self, document_id: int) -> DocumentDetail:
+        raw = self._request("GET", f"/v1/documents/{document_id}")
+        return DocumentDetail.model_validate(raw)
 
-    def status(self, document_id: int) -> dict[str, Any]:
-        return self._client._request("GET", f"/v1/documents/{document_id}/status")
+    def status(self, document_id: int) -> DocumentStatusResponse:
+        raw = self._request("GET", f"/v1/documents/{document_id}/status")
+        return DocumentStatusResponse.model_validate(raw)
 
-    def reprocess(self, document_id: int, *, idempotency_key: str | None = None) -> dict[str, Any]:
-        headers = {}
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        return self._client._request(
+    def reprocess(
+        self,
+        document_id: int,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DocumentStatusResponse:
+        raw = self._request(
             "POST",
             f"/v1/documents/{document_id}/reprocess",
-            headers=headers or None,
+            headers=_idempotency_headers(idempotency_key),
         )
+        return DocumentStatusResponse.model_validate(raw)
 
-    def cancel(self, document_id: int, *, idempotency_key: str | None = None) -> dict[str, Any]:
-        headers = {}
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        return self._client._request(
+    def cancel(
+        self,
+        document_id: int,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DocumentStatusResponse:
+        raw = self._request(
             "POST",
             f"/v1/documents/{document_id}/cancel",
-            headers=headers or None,
+            headers=_idempotency_headers(idempotency_key),
         )
+        return DocumentStatusResponse.model_validate(raw)
 
     def reclassify(
         self,
@@ -129,13 +168,160 @@ class DocumentsResource:
         document_type: str,
         *,
         idempotency_key: str | None = None,
-    ) -> dict[str, Any]:
-        headers = {}
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        return self._client._request(
+    ) -> DocumentStatusResponse:
+        raw = self._request(
             "POST",
             f"/v1/documents/{document_id}/reclassify",
             params={"document_type": document_type},
-            headers=headers or None,
+            headers=_idempotency_headers(idempotency_key),
         )
+        return DocumentStatusResponse.model_validate(raw)
+
+    def batch_status(self, document_ids: list[int]) -> BatchDocumentStatusResponse:
+        """Check processing status for multiple documents at once."""
+        raw = self._request(
+            "POST",
+            "/v1/documents/batch-status",
+            json={"document_ids": document_ids},
+        )
+        return BatchDocumentStatusResponse.model_validate(raw)
+
+
+# ---------------------------------------------------------------------------
+# Async resource
+# ---------------------------------------------------------------------------
+
+
+class AsyncDocumentsResource(AsyncAPIResource):
+    """Asynchronous documents resource."""
+
+    async def upload(
+        self,
+        deal_id: int,
+        file_path: str | Path,
+        *,
+        document_type: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> DocumentUploadResponse:
+        p = Path(file_path)
+        with open(p, "rb") as f:
+            raw = await self._request(
+                "POST",
+                f"/v1/deals/{deal_id}/documents",
+                files={"file": (p.name, f, "application/pdf")},
+                params=_upload_params(document_type),
+                headers=_idempotency_headers(idempotency_key),
+                timeout=self._client.TIMEOUT_UPLOAD,
+            )
+        return DocumentUploadResponse.model_validate(raw)
+
+    async def upload_bulk(
+        self,
+        deal_id: int,
+        file_paths: list[str | Path],
+        *,
+        document_type: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> BulkUploadResponse:
+        files = []
+        handles = []
+        try:
+            for fp in file_paths:
+                p = Path(fp)
+                f = open(p, "rb")  # noqa: SIM115
+                handles.append(f)
+                files.append(("files", (p.name, f, "application/pdf")))
+            raw = await self._request(
+                "POST",
+                f"/v1/deals/{deal_id}/documents/bulk",
+                files=files,
+                params=_upload_params(document_type),
+                headers=_idempotency_headers(idempotency_key),
+                timeout=self._client.TIMEOUT_UPLOAD,
+            )
+        finally:
+            for f in handles:
+                f.close()
+        return BulkUploadResponse.model_validate(raw)
+
+    async def list(
+        self,
+        deal_id: int,
+        *,
+        page: int = 1,
+        per_page: int = 25,
+    ) -> DocumentListResponse:
+        raw = await self._request(
+            "GET",
+            f"/v1/deals/{deal_id}/documents",
+            params={"page": page, "per_page": per_page},
+        )
+        return DocumentListResponse.model_validate(raw)
+
+    def list_all(self, deal_id: int, **filters: Any) -> AsyncPageIterator:
+        """Iterate over all documents for a deal, auto-fetching pages."""
+        from banklyze.pagination import AsyncPageIterator
+
+        return AsyncPageIterator(
+            self._client,
+            f"/v1/deals/{deal_id}/documents",
+            params=filters,
+        )
+
+    async def get(self, document_id: int) -> DocumentDetail:
+        raw = await self._request("GET", f"/v1/documents/{document_id}")
+        return DocumentDetail.model_validate(raw)
+
+    async def status(self, document_id: int) -> DocumentStatusResponse:
+        raw = await self._request("GET", f"/v1/documents/{document_id}/status")
+        return DocumentStatusResponse.model_validate(raw)
+
+    async def reprocess(
+        self,
+        document_id: int,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DocumentStatusResponse:
+        raw = await self._request(
+            "POST",
+            f"/v1/documents/{document_id}/reprocess",
+            headers=_idempotency_headers(idempotency_key),
+        )
+        return DocumentStatusResponse.model_validate(raw)
+
+    async def cancel(
+        self,
+        document_id: int,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DocumentStatusResponse:
+        raw = await self._request(
+            "POST",
+            f"/v1/documents/{document_id}/cancel",
+            headers=_idempotency_headers(idempotency_key),
+        )
+        return DocumentStatusResponse.model_validate(raw)
+
+    async def reclassify(
+        self,
+        document_id: int,
+        document_type: str,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DocumentStatusResponse:
+        raw = await self._request(
+            "POST",
+            f"/v1/documents/{document_id}/reclassify",
+            params={"document_type": document_type},
+            headers=_idempotency_headers(idempotency_key),
+        )
+        return DocumentStatusResponse.model_validate(raw)
+
+    async def batch_status(self, document_ids: list[int]) -> BatchDocumentStatusResponse:
+        """Check processing status for multiple documents at once."""
+        raw = await self._request(
+            "POST",
+            "/v1/documents/batch-status",
+            json={"document_ids": document_ids},
+        )
+        return BatchDocumentStatusResponse.model_validate(raw)

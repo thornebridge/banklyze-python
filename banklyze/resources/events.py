@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator
 
 if TYPE_CHECKING:
+    from banklyze.async_client import AsyncBanklyzeClient
     from banklyze.client import BanklyzeClient
 
 
@@ -105,6 +106,156 @@ class EventsResource:
                 else:
                     lines.append(line)
             # Handle any trailing lines
+            if lines:
+                evt = _parse_sse_lines(lines)
+                if evt is not None:
+                    yield evt
+
+    def stream_org(self, *, last_event_id: int | None = None) -> Iterator[SSEEvent]:
+        """Stream org-level business events (deal created, status changed, etc.)."""
+        params: dict[str, Any] = {}
+        if last_event_id is not None:
+            params["last_event_id"] = last_event_id
+        with self._client._http.stream(
+            "GET", "/v1/events/org",
+            params={k: v for k, v in params.items() if v is not None},
+        ) as response:
+            response.raise_for_status()
+            lines: list[str] = []
+            for line in response.iter_lines():
+                if line == "":
+                    if lines:
+                        evt = _parse_sse_lines(lines)
+                        if evt is not None:
+                            yield evt
+                        lines = []
+                else:
+                    lines.append(line)
+            if lines:
+                evt = _parse_sse_lines(lines)
+                if evt is not None:
+                    yield evt
+
+    def stream_batch(self, batch_id: str, *, last_event_id: int | None = None) -> Iterator[SSEEvent]:
+        """Stream events for a CRM ingest batch."""
+        params: dict[str, Any] = {}
+        if last_event_id is not None:
+            params["last_event_id"] = last_event_id
+        with self._client._http.stream(
+            "GET", f"/v1/events/batches/{batch_id}",
+            params={k: v for k, v in params.items() if v is not None},
+        ) as response:
+            response.raise_for_status()
+            lines: list[str] = []
+            for line in response.iter_lines():
+                if line == "":
+                    if lines:
+                        evt = _parse_sse_lines(lines)
+                        if evt is not None:
+                            yield evt
+                        lines = []
+                else:
+                    lines.append(line)
+            if lines:
+                evt = _parse_sse_lines(lines)
+                if evt is not None:
+                    yield evt
+
+
+class AsyncEventsResource:
+    """Stream deal pipeline events via SSE (async)."""
+
+    def __init__(self, client: AsyncBanklyzeClient):
+        self._client = client
+
+    async def stream(
+        self,
+        deal_id: int,
+        *,
+        document_id: int | None = None,
+        last_event_id: int | None = None,
+    ) -> AsyncIterator[SSEEvent]:
+        """Async stream pipeline events for a deal.
+
+        Usage::
+
+            async for event in await client.events.stream(deal_id=42):
+                if event.event == "stage":
+                    payload = event.json()
+                    print(f"Stage: {payload['stage']}")
+        """
+        params: dict[str, Any] = {}
+        if document_id is not None:
+            params["document_id"] = document_id
+        if last_event_id is not None:
+            params["last_event_id"] = last_event_id
+
+        async with self._client._http.stream(
+            "GET",
+            f"/v1/events/deals/{deal_id}",
+            params={k: v for k, v in params.items() if v is not None},
+        ) as response:
+            response.raise_for_status()
+            lines: list[str] = []
+            async for line in response.aiter_lines():
+                if line == "":
+                    if lines:
+                        evt = _parse_sse_lines(lines)
+                        if evt is not None:
+                            yield evt
+                        lines = []
+                else:
+                    lines.append(line)
+            if lines:
+                evt = _parse_sse_lines(lines)
+                if evt is not None:
+                    yield evt
+
+    async def stream_org(self, *, last_event_id: int | None = None) -> AsyncIterator[SSEEvent]:
+        """Stream org-level business events (async)."""
+        params: dict[str, Any] = {}
+        if last_event_id is not None:
+            params["last_event_id"] = last_event_id
+        async with self._client._http.stream(
+            "GET", "/v1/events/org",
+            params={k: v for k, v in params.items() if v is not None},
+        ) as response:
+            response.raise_for_status()
+            lines: list[str] = []
+            async for line in response.aiter_lines():
+                if line == "":
+                    if lines:
+                        evt = _parse_sse_lines(lines)
+                        if evt is not None:
+                            yield evt
+                        lines = []
+                else:
+                    lines.append(line)
+            if lines:
+                evt = _parse_sse_lines(lines)
+                if evt is not None:
+                    yield evt
+
+    async def stream_batch(self, batch_id: str, *, last_event_id: int | None = None) -> AsyncIterator[SSEEvent]:
+        """Stream events for a CRM ingest batch (async)."""
+        params: dict[str, Any] = {}
+        if last_event_id is not None:
+            params["last_event_id"] = last_event_id
+        async with self._client._http.stream(
+            "GET", f"/v1/events/batches/{batch_id}",
+            params={k: v for k, v in params.items() if v is not None},
+        ) as response:
+            response.raise_for_status()
+            lines: list[str] = []
+            async for line in response.aiter_lines():
+                if line == "":
+                    if lines:
+                        evt = _parse_sse_lines(lines)
+                        if evt is not None:
+                            yield evt
+                        lines = []
+                else:
+                    lines.append(line)
             if lines:
                 evt = _parse_sse_lines(lines)
                 if evt is not None:

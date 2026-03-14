@@ -3,20 +3,39 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
 import httpx
 
 from banklyze._base import ClientConfig
-from banklyze.async_resources.deals import AsyncDealsResource
-from banklyze.async_resources.documents import AsyncDocumentsResource
-from banklyze.async_resources.events import AsyncEventsResource
-from banklyze.async_resources.exports import AsyncExportsResource
-from banklyze.async_resources.ingest import AsyncIngestResource
-from banklyze.async_resources.rulesets import AsyncRulesetsResource
-from banklyze.async_resources.transactions import AsyncTransactionsResource
-from banklyze.async_resources.webhooks import AsyncWebhooksResource
+from banklyze.resources.admin import AsyncAdminResource
+from banklyze.resources.collaboration import (
+    AsyncAssignmentsResource,
+    AsyncCommentsResource,
+    AsyncDocRequestsResource,
+    AsyncTimelineResource,
+    AsyncUserSearchResource,
+)
+from banklyze.resources.crm import AsyncCrmResource
+from banklyze.resources.deals import AsyncDealsResource
+from banklyze.resources.documents import AsyncDocumentsResource
+from banklyze.resources.events import AsyncEventsResource
+from banklyze.resources.exports import AsyncExportsResource
+from banklyze.resources.ingest import AsyncIngestResource
+from banklyze.resources.integrations import AsyncIntegrationsResource
+from banklyze.resources.keys import AsyncKeysResource
+from banklyze.resources.notifications import AsyncNotificationsResource
+from banklyze.resources.oauth import AsyncOAuthResource
+from banklyze.resources.onboarding import AsyncOnboardingResource
+from banklyze.resources.push import AsyncPushResource
+from banklyze.resources.rulesets import AsyncRulesetsResource
+from banklyze.resources.share import AsyncSharesResource
+from banklyze.resources.team import AsyncTeamResource
+from banklyze.resources.transactions import AsyncTransactionsResource
+from banklyze.resources.usage import AsyncUsageResource
+from banklyze.resources.webhooks import AsyncWebhooksResource
 from banklyze.exceptions import (
     AuthenticationError,
     BanklyzeError,
@@ -35,6 +54,12 @@ class AsyncBanklyzeClient:
             deals = await client.deals.list()
     """
 
+    # Per-operation timeout defaults (seconds) — matches BanklyzeClient
+    TIMEOUT_READ = 10.0
+    TIMEOUT_WRITE = 30.0
+    TIMEOUT_UPLOAD = 120.0
+    TIMEOUT_REPORT = 300.0
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -43,6 +68,7 @@ class AsyncBanklyzeClient:
         max_retries: int = 2,
         retry_backoff: float = 0.5,
         retry_max_backoff: float = 30.0,
+        logger: Any | None = None,
     ):
         self._config = ClientConfig(
             api_key=api_key,
@@ -57,15 +83,34 @@ class AsyncBanklyzeClient:
             headers=self._config._build_headers(),
             timeout=timeout,
         )
+        self._logger = logger
 
+        self.admin = AsyncAdminResource(self)
+        self.crm = AsyncCrmResource(self)
         self.deals = AsyncDealsResource(self)
         self.documents = AsyncDocumentsResource(self)
         self.events = AsyncEventsResource(self)
         self.transactions = AsyncTransactionsResource(self)
         self.exports = AsyncExportsResource(self)
         self.ingest = AsyncIngestResource(self)
+        self.integrations = AsyncIntegrationsResource(self)
+        self.keys = AsyncKeysResource(self)
+        self.notifications = AsyncNotificationsResource(self)
+        self.oauth = AsyncOAuthResource(self)
+        self.onboarding = AsyncOnboardingResource(self)
+        self.push = AsyncPushResource(self)
         self.rulesets = AsyncRulesetsResource(self)
+        self.shares = AsyncSharesResource(self)
+        self.team = AsyncTeamResource(self)
+        self.usage = AsyncUsageResource(self)
         self.webhooks = AsyncWebhooksResource(self)
+
+        # Sub-resources on deals
+        self.deals.comments = AsyncCommentsResource(self)
+        self.deals.assignments = AsyncAssignmentsResource(self)
+        self.deals.doc_requests = AsyncDocRequestsResource(self)
+        self.deals.timeline = AsyncTimelineResource(self)
+        self.deals.users = AsyncUserSearchResource(self)
 
     @property
     def last_request_id(self) -> str | None:
@@ -88,10 +133,12 @@ class AsyncBanklyzeClient:
         path: str,
         *,
         json: dict | None = None,
+        data: dict | None = None,
         params: dict | None = None,
         files: Any = None,
         headers: dict[str, str] | None = None,
         raw: bool = False,
+        timeout: float | None = None,
     ) -> Any:
         """Make an async API request and return parsed JSON (or raw bytes if raw=True).
 
@@ -108,14 +155,17 @@ class AsyncBanklyzeClient:
         last_resp: httpx.Response | None = None
 
         for attempt in range(1 + self._config.max_retries):
+            req_start = time.monotonic()
             try:
                 resp = await self._http.request(
                     method,
                     path,
                     json=json,
+                    data=data,
                     params={k: v for k, v in (params or {}).items() if v is not None},
                     files=files,
                     headers=req_headers,
+                    timeout=timeout or self._config.timeout,
                 )
 
                 # Capture the server-echoed request ID for debugging correlation
@@ -123,6 +173,14 @@ class AsyncBanklyzeClient:
                     "X-Request-ID", req_headers["X-Request-ID"]
                 )
                 last_resp = resp
+
+                if self._logger:
+                    duration_ms = (time.monotonic() - req_start) * 1000
+                    self._logger.debug(
+                        "%s %s -> %d (%.0fms) [%s]",
+                        method, path, resp.status_code, duration_ms,
+                        self._config.last_request_id,
+                    )
 
                 if resp.status_code < 400:
                     if raw:

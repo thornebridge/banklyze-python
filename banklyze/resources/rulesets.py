@@ -2,36 +2,75 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from banklyze.client import BanklyzeClient
+from banklyze._base_resource import AsyncAPIResource, SyncAPIResource
+from banklyze.types.common import ActionResponse
+from banklyze.types.ruleset import (
+    Ruleset,
+    RulesetListResponse,
+)
 
 
-class RulesetsResource:
-    def __init__(self, client: BanklyzeClient):
-        self._client = client
+class RulesetsResource(SyncAPIResource):
+    def list(self) -> RulesetListResponse:
+        data = self._request("GET", "/v1/rulesets")
+        return RulesetListResponse.model_validate(data)
 
-    def list(self) -> dict[str, Any]:
-        return self._client._request("GET", "/v1/rulesets")
+    def create(self, **kwargs: Any) -> Ruleset:
+        data = self._request("POST", "/v1/rulesets", json=kwargs)
+        return Ruleset.model_validate(data)
 
-    def create(self, **kwargs: Any) -> dict[str, Any]:
-        return self._client._request("POST", "/v1/rulesets", json=kwargs)
+    def get(self, ruleset_id: int) -> Ruleset:
+        data = self._request("GET", f"/v1/rulesets/{ruleset_id}")
+        return Ruleset.model_validate(data)
 
-    def get(self, ruleset_id: int) -> dict[str, Any]:
-        return self._client._request("GET", f"/v1/rulesets/{ruleset_id}")
-
-    def update(self, ruleset_id: int, **kwargs: Any) -> dict[str, Any]:
-        return self._client._request(
+    def update(self, ruleset_id: int, **kwargs: Any) -> Ruleset:
+        data = self._request(
             "PUT", f"/v1/rulesets/{ruleset_id}", json=kwargs,
         )
+        return Ruleset.model_validate(data)
 
-    def delete(self, ruleset_id: int) -> dict[str, Any]:
-        return self._client._request(
+    def delete(self, ruleset_id: int) -> ActionResponse:
+        data = self._request(
             "DELETE", f"/v1/rulesets/{ruleset_id}",
         )
+        return ActionResponse.model_validate(data)
 
-    def set_default(self, ruleset_id: int) -> dict[str, Any]:
-        return self._client._request(
+    def set_default(self, ruleset_id: int) -> ActionResponse:
+        data = self._request(
             "POST", f"/v1/rulesets/{ruleset_id}/set-default",
         )
+        return ActionResponse.model_validate(data)
+
+
+class AsyncRulesetsResource(AsyncAPIResource):
+    async def list(self) -> RulesetListResponse:
+        data = await self._request("GET", "/v1/rulesets")
+        return RulesetListResponse.model_validate(data)
+
+    async def create(self, **kwargs: Any) -> Ruleset:
+        data = await self._request("POST", "/v1/rulesets", json=kwargs)
+        return Ruleset.model_validate(data)
+
+    async def get(self, ruleset_id: int) -> Ruleset:
+        data = await self._request("GET", f"/v1/rulesets/{ruleset_id}")
+        return Ruleset.model_validate(data)
+
+    async def update(self, ruleset_id: int, **kwargs: Any) -> Ruleset:
+        data = await self._request(
+            "PUT", f"/v1/rulesets/{ruleset_id}", json=kwargs,
+        )
+        return Ruleset.model_validate(data)
+
+    async def delete(self, ruleset_id: int) -> ActionResponse:
+        data = await self._request(
+            "DELETE", f"/v1/rulesets/{ruleset_id}",
+        )
+        return ActionResponse.model_validate(data)
+
+    async def set_default(self, ruleset_id: int) -> ActionResponse:
+        data = await self._request(
+            "POST", f"/v1/rulesets/{ruleset_id}/set-default",
+        )
+        return ActionResponse.model_validate(data)

@@ -2,42 +2,68 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import json
+from pathlib import Path
+from typing import Any
 
-if TYPE_CHECKING:
-    from banklyze.client import BanklyzeClient
+from banklyze._base_resource import AsyncAPIResource, SyncAPIResource
+from banklyze.types.ingest import BatchStatusResponse, IngestResponse
 
 
-class IngestResource:
-    def __init__(self, client: BanklyzeClient):
-        self._client = client
-
+class IngestResource(SyncAPIResource):
     def create(
         self,
         *,
-        documents: list[dict[str, Any]],
-        callback_url: str | None = None,
-        external_reference: str | None = None,
-    ) -> dict[str, Any]:
-        """Create a new ingest batch.
+        file_paths: list[str | Path],
+        metadata: dict[str, Any],
+        document_type: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> IngestResponse:
+        """Create a new ingest batch with file uploads.
 
         Args:
-            documents: List of document descriptors, each with at least
-                ``url`` and ``deal_external_reference`` keys.
-            callback_url: Optional URL to call when the batch completes.
-            external_reference: Optional external reference for the batch.
+            file_paths: List of local file paths to upload.
+            metadata: Dict with deal-matching info (``external_reference``,
+                ``business_name``, ``deal_id``, ``callback_url``, etc.).
+                Sent as a JSON string in the ``metadata`` form field.
+            document_type: Optional document type override for all files.
+            idempotency_key: Optional idempotency key.
 
         Returns:
             Batch response with ``batch_id``, ``status``, and per-document details.
         """
-        payload: dict[str, Any] = {"documents": documents}
-        if callback_url:
-            payload["callback_url"] = callback_url
-        if external_reference:
-            payload["external_reference"] = external_reference
-        return self._client._request("POST", "/v1/ingest", json=payload)
+        files = []
+        handles = []
+        try:
+            for fp in file_paths:
+                p = Path(fp)
+                f = open(p, "rb")  # noqa: SIM115
+                handles.append(f)
+                files.append(("files", (p.name, f, "application/pdf")))
 
-    def get_batch(self, batch_id: int) -> dict[str, Any]:
+            params: dict[str, str] | None = None
+            if document_type:
+                params = {"document_type": document_type}
+
+            headers: dict[str, str] | None = None
+            if idempotency_key:
+                headers = {"Idempotency-Key": idempotency_key}
+
+            data = self._request(
+                "POST",
+                "/v1/ingest",
+                files=files,
+                params=params,
+                headers=headers,
+                timeout=self._client.TIMEOUT_UPLOAD,
+                data={"metadata": json.dumps(metadata)},
+            )
+        finally:
+            for f in handles:
+                f.close()
+        return IngestResponse.model_validate(data)
+
+    def get_batch(self, batch_id: int) -> BatchStatusResponse:
         """Get the status of an ingest batch.
 
         Args:
@@ -46,4 +72,71 @@ class IngestResource:
         Returns:
             Batch details including per-document statuses.
         """
-        return self._client._request("GET", f"/v1/ingest/{batch_id}")
+        data = self._request("GET", f"/v1/ingest/{batch_id}")
+        return BatchStatusResponse.model_validate(data)
+
+
+class AsyncIngestResource(AsyncAPIResource):
+    async def create(
+        self,
+        *,
+        file_paths: list[str | Path],
+        metadata: dict[str, Any],
+        document_type: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> IngestResponse:
+        """Create a new ingest batch with file uploads.
+
+        Args:
+            file_paths: List of local file paths to upload.
+            metadata: Dict with deal-matching info (``external_reference``,
+                ``business_name``, ``deal_id``, ``callback_url``, etc.).
+                Sent as a JSON string in the ``metadata`` form field.
+            document_type: Optional document type override for all files.
+            idempotency_key: Optional idempotency key.
+
+        Returns:
+            Batch response with ``batch_id``, ``status``, and per-document details.
+        """
+        files = []
+        handles = []
+        try:
+            for fp in file_paths:
+                p = Path(fp)
+                f = open(p, "rb")  # noqa: SIM115
+                handles.append(f)
+                files.append(("files", (p.name, f, "application/pdf")))
+
+            params: dict[str, str] | None = None
+            if document_type:
+                params = {"document_type": document_type}
+
+            headers: dict[str, str] | None = None
+            if idempotency_key:
+                headers = {"Idempotency-Key": idempotency_key}
+
+            data = await self._request(
+                "POST",
+                "/v1/ingest",
+                files=files,
+                params=params,
+                headers=headers,
+                timeout=self._client.TIMEOUT_UPLOAD,
+                data={"metadata": json.dumps(metadata)},
+            )
+        finally:
+            for f in handles:
+                f.close()
+        return IngestResponse.model_validate(data)
+
+    async def get_batch(self, batch_id: int) -> BatchStatusResponse:
+        """Get the status of an ingest batch.
+
+        Args:
+            batch_id: The batch ID returned from ``create()``.
+
+        Returns:
+            Batch details including per-document statuses.
+        """
+        data = await self._request("GET", f"/v1/ingest/{batch_id}")
+        return BatchStatusResponse.model_validate(data)
