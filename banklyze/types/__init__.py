@@ -115,6 +115,13 @@ from banklyze.types.ruleset import (
     RulesetEvaluation,
     RulesetListResponse,
 )
+from banklyze.types.sam_profile import (
+    SAMFetchRun,
+    SAMFetchRunListResponse,
+    SAMProfileWatcher,
+    SAMSearchProfile,
+    SAMSearchProfileListResponse,
+)
 from banklyze.types.share import ShareToken, ShareTokenListItem, ShareTokenListResponse
 from banklyze.types.team import InviteResponse, TeamListResponse, TeamMember
 from banklyze.types.transaction import (
@@ -256,6 +263,12 @@ __all__ = [
     "Ruleset",
     "RulesetEvaluation",
     "RulesetListResponse",
+    # SAM Profile
+    "SAMFetchRun",
+    "SAMFetchRunListResponse",
+    "SAMProfileWatcher",
+    "SAMSearchProfile",
+    "SAMSearchProfileListResponse",
     # Share
     "ShareToken",
     "ShareTokenListItem",

@@ -38,6 +38,7 @@ from banklyze.resources.oauth import OAuthResource
 from banklyze.resources.onboarding import OnboardingResource
 from banklyze.resources.push import PushResource
 from banklyze.resources.rulesets import RulesetsResource
+from banklyze.resources.sam_profiles import SAMProfilesResource
 from banklyze.resources.share import SharesResource
 from banklyze.resources.team import TeamResource
 from banklyze.resources.transactions import TransactionsResource
@@ -106,6 +107,7 @@ class BanklyzeClient:
         self.onboarding = OnboardingResource(self)
         self.push = PushResource(self)
         self.rulesets = RulesetsResource(self)
+        self.sam_profiles = SAMProfilesResource(self)
         self.shares = SharesResource(self)
         self.team = TeamResource(self)
         self.usage = UsageResource(self)

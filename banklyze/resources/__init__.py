@@ -27,6 +27,7 @@ from banklyze.resources.oauth import AsyncOAuthResource, OAuthResource
 from banklyze.resources.onboarding import AsyncOnboardingResource, OnboardingResource
 from banklyze.resources.push import AsyncPushResource, PushResource
 from banklyze.resources.rulesets import AsyncRulesetsResource, RulesetsResource
+from banklyze.resources.sam_profiles import AsyncSAMProfilesResource, SAMProfilesResource
 from banklyze.resources.share import AsyncSharesResource, SharesResource
 from banklyze.resources.team import AsyncTeamResource, TeamResource
 from banklyze.resources.transactions import AsyncTransactionsResource, TransactionsResource
@@ -66,6 +67,7 @@ __all__ = [
     "AsyncOnboardingResource",
     "AsyncPushResource",
     "AsyncRulesetsResource",
+    "AsyncSAMProfilesResource",
     "AsyncSharesResource",
     "AsyncTeamResource",
     "AsyncTransactionsResource",
@@ -83,6 +85,7 @@ __all__ = [
     "OnboardingResource",
     "PushResource",
     "RulesetsResource",
+    "SAMProfilesResource",
     "SharesResource",
     "TeamResource",
     "TransactionsResource",

@@ -32,6 +32,7 @@ from banklyze.resources.oauth import AsyncOAuthResource
 from banklyze.resources.onboarding import AsyncOnboardingResource
 from banklyze.resources.push import AsyncPushResource
 from banklyze.resources.rulesets import AsyncRulesetsResource
+from banklyze.resources.sam_profiles import AsyncSAMProfilesResource
 from banklyze.resources.share import AsyncSharesResource
 from banklyze.resources.team import AsyncTeamResource
 from banklyze.resources.transactions import AsyncTransactionsResource
@@ -102,6 +103,7 @@ class AsyncBanklyzeClient:
         self.onboarding = AsyncOnboardingResource(self)
         self.push = AsyncPushResource(self)
         self.rulesets = AsyncRulesetsResource(self)
+        self.sam_profiles = AsyncSAMProfilesResource(self)
         self.shares = AsyncSharesResource(self)
         self.team = AsyncTeamResource(self)
         self.usage = AsyncUsageResource(self)
